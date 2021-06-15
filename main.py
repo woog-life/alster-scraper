@@ -80,8 +80,16 @@ def extract_table_row(html: BeautifulSoup):
         logger.error(f"tr not found or len(rows) < 5 in {table}")
         return None
 
-    return rows[5]
+    try:
+        for row in rows:
+            columns = row.find_all("td")
+            if columns and "Wassertemperatur" in columns[1].text:
+                return row
+    except IndexError:
+        pass
 
+    logger.error("Couldn't find a column for 'Wassertemperatur'")
+    return None
 
 
 def get_tag_text_from_xml(xml: Union[BeautifulSoup, Tag], name: str, conversion: Callable) -> Optional:
@@ -106,7 +114,6 @@ def get_water_information(soup: BeautifulSoup) -> Optional[WATER_INFORMATION]:
     iso_time = time.astimezone(pytz.utc).isoformat()
 
     temperature = float(columns[2].text.strip())
-
 
     # noinspection PyTypeChecker
     # at this point pycharm doesn't think that the return type can be optional despite the many empty returns beforehand
@@ -147,6 +154,10 @@ def main() -> Tuple[bool, str]:
 
     soup = parse_website_xml(content)
     temperature_row = extract_table_row(soup)
+    if not temperature_row:
+        message = "Couldn't find a row with 'Wassertemperatur' as a description"
+        logger.error(message)
+        return False, message
 
     water_information = get_water_information(temperature_row)
 

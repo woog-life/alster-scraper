@@ -67,18 +67,18 @@ def parse_website_xml(xml: str) -> BeautifulSoup:
     return BeautifulSoup(xml, "html.parser")
 
 
-def extract_table_row(html: BeautifulSoup):
+def extract_table_row(html: BeautifulSoup) -> Tuple[Optional[Tag], bool]:
     logger = create_logger(inspect.currentframe().f_code.co_name)
 
     table = html.find("table")
     if not table:
         logger.error(f"table not found in html {html}")
-        return None
+        return None, "410 - Gone" not in html
 
     rows = table.find_all("tr")
     if not rows or len(rows) < 5:
         logger.error(f"tr not found or len(rows) < 5 in {table}")
-        return None
+        return None, True
 
     try:
         for row in rows:
@@ -89,7 +89,7 @@ def extract_table_row(html: BeautifulSoup):
         pass
 
     logger.error("Couldn't find a column for 'Wassertemperatur'")
-    return None
+    return None, True
 
 
 def get_tag_text_from_xml(xml: Union[BeautifulSoup, Tag], name: str, conversion: Callable) -> Optional:
@@ -144,36 +144,36 @@ def send_data_to_backend(water_information: WATER_INFORMATION) -> Tuple[
     return response, url
 
 
-def main() -> Tuple[bool, str]:
+def main() -> Tuple[bool, str, bool]:
     logger = create_logger(inspect.currentframe().f_code.co_name)
     content, success = get_website()
     if not success:
         message = f"Couldn't retrieve website: {content}"
         logger.error(message)
-        return False, message
+        return False, message, True
 
     soup = parse_website_xml(content)
-    temperature_row = extract_table_row(soup)
+    temperature_row, send_message = extract_table_row(soup)
     if not temperature_row:
         message = "Couldn't find a row with 'Wassertemperatur' as a description"
         logger.error(message)
-        return False, message
+        return False, message, send_message
 
     water_information = get_water_information(temperature_row)
 
     if not water_information:
         message = f"Couldn't retrieve water information from {soup}"
         logger.error(message)
-        return False, message
+        return False, message, True
 
     response, generated_backend_url = send_data_to_backend(water_information)
 
     if not response or not response.ok:
         message = f"Failed to put data ({water_information}) to backend: {generated_backend_url}\n{response.content}"
         logger.error(message)
-        return False, message
+        return False, message, True
 
-    return True, ""
+    return True, "", True
 
 
 root_logger = create_logger("__main__")
@@ -183,8 +183,8 @@ if not UUID:
 elif not API_KEY:
     root_logger.error("API_KEY not defined in environment")
 else:
-    success, message = main()
-    if not success:
+    success, message, send_message = main()
+    if not success and send_message:
         root_logger.error(f"Something went wrong ({message})")
         token = os.getenv("TOKEN")
         chatlist = os.getenv("TELEGRAM_CHATLIST") or "139656428"

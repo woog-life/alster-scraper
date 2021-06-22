@@ -84,7 +84,7 @@ def extract_table_row(html: BeautifulSoup) -> Tuple[Optional[Tag], bool]:
         for row in rows:
             columns = row.find_all("td")
             if columns and "Wassertemperatur" in columns[1].text:
-                return row
+                return row, True
     except IndexError:
         pass
 
@@ -153,11 +153,11 @@ def main() -> Tuple[bool, str, bool]:
         return False, message, True
 
     soup = parse_website_xml(content)
-    temperature_row, send_message = extract_table_row(soup)
+    temperature_row, send_alert = extract_table_row(soup)
     if not temperature_row:
         message = "Couldn't find a row with 'Wassertemperatur' as a description"
         logger.error(message)
-        return False, message, send_message
+        return False, message, send_alert
 
     water_information = get_water_information(temperature_row)
 
@@ -184,9 +184,10 @@ elif not API_KEY:
     root_logger.error("API_KEY not defined in environment")
 else:
     success, message, send_message = main()
-    if not success and send_message:
+    if not success:
         root_logger.error(f"Something went wrong ({message})")
-        token = os.getenv("TOKEN")
-        chatlist = os.getenv("TELEGRAM_CHATLIST") or "139656428"
-        send_telegram_alert(message, token=token, chatlist=chatlist.split(","))
+        if send_message:
+            token = os.getenv("TOKEN")
+            chatlist = os.getenv("TELEGRAM_CHATLIST") or "139656428"
+            send_telegram_alert(message, token=token, chatlist=chatlist.split(","))
         sys.exit(1)
